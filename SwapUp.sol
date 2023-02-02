@@ -3,7 +3,7 @@ pragma solidity >=0.4.17 <0.9.0;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-contract Swap {
+contract SwapUp {
   constructor() {}
 
   function transfer(bytes[] memory nfts, address init, address accept) public{
