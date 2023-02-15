@@ -8,8 +8,6 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 contract SwapUp is EIP712 {
   constructor() EIP712("swap up","1.0") {}
 
-  event txnSuccessful(string a, address tkn, string b, uint id, string c, address from, string d, address to);
-
   function swap(
     address sender,
     bytes memory message,
@@ -35,20 +33,16 @@ contract SwapUp is EIP712 {
       (address tkn, uint id, uint chain) = abi.decode(initNfts[i],(address,uint,uint));
         if (chain==721) {
           IERC721(tkn).safeTransferFrom(initAddress,acceptAddress,id);
-          emit txnSuccessful("NFT address: ", tkn, "NFT ID: ", id, "sender: ", initAddress, "receiver: ", acceptAddress);
         } else {
           IERC1155(tkn).safeTransferFrom(initAddress,acceptAddress,id,1,"");
-          emit txnSuccessful("NFT address: ", tkn, "NFT ID: ", id, "sender: ", initAddress, "receiver: ", acceptAddress);
         }
     }
     for (uint i = 0; i < acceptNfts.length; i++) {
       (address tkn, uint id, uint chain) = abi.decode(acceptNfts[i],(address,uint,uint));
         if (chain==721) {
           IERC721(tkn).safeTransferFrom(acceptAddress,initAddress,id);
-          emit txnSuccessful("NFT address: ", tkn, "NFT ID: ", id, "sender: ", acceptAddress, "receiver: ", initAddress);
         } else {
           IERC1155(tkn).safeTransferFrom(acceptAddress,initAddress,id,1,"");
-          emit txnSuccessful("NFT address: ", tkn, "NFT ID: ", id, "sender: ", acceptAddress, "receiver: ", initAddress);
         }
     }
   }
