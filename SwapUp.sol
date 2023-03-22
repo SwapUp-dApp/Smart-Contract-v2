@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /*
  This smart contract has been written for an NFT swap dapp. The swap method recieves 3 params viz. message i.e. the swap metadata containing info
@@ -26,37 +27,61 @@ contract SwapUp is EIP712 {
     bytes memory message,
     bytes memory signature
   ) external {
+    string memory data;
+    // decoding metadata
+    (bytes[] memory tradeData) = abi.decode(message,(bytes[]));
+    (bytes[] memory initNfts, string memory initAddress, address addrInit) = abi.decode(tradeData[0],(bytes[],string,address));
+    (bytes[] memory acceptNfts, string memory acceptAddress, address addrAccept) = abi.decode(tradeData[1],(bytes[],string,address));
+    data=initAddress;
+    data=string.concat(data," offering to swap NFTs, ");
+    data=string.concat(data,ParseStr(initNfts));
+    data=string.concat(data," with the NFTs, ");
+    data=string.concat(data,ParseStr(acceptNfts));
+    data=string.concat(data," belonging to ");
+    data=string.concat(data,acceptAddress);
     // regenerating sign hash
     bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(
-      keccak256("set(address sender,bytes msg)"),
+      keccak256("set(address sender,string msg)"),
       sender,
-      keccak256(abi.encodePacked(message))
+      keccak256(bytes(data))
     )));
     // verifying sign
     address signer = ECDSA.recover(digest, signature);
-    require(signer == sender, "signTypedDataV4: invalid signature");
+    require(signer == sender, "MyFunction: invalid signature");
     require(signer != address(0), "ECDSA: invalid signature");
-    // NFT trade
-    (bytes[] memory tradeData) = abi.decode(message,(bytes[]));
-    (bytes[] memory initNfts, address initAddress) = abi.decode(tradeData[0],(bytes[],address));
-    (bytes[] memory acceptNfts, address acceptAddress) = abi.decode(tradeData[1],(bytes[],address));
     // checking if the caller is acceptor
-    require(acceptAddress == msg.sender, "caller is not acceptor!");
-    for (uint i = 0; i < initNfts.length; i++) {
-      (address tkn, uint id, uint chain) = abi.decode(initNfts[i],(address,uint,uint));
+    require(addrAccept == msg.sender, "caller is not acceptor!");
+    // transferring NFTs
+    transfer(initNfts, addrInit, addrAccept);
+    transfer(acceptNfts, addrAccept, addrInit);
+  }
+
+  function transfer(bytes[] memory nfts,address sender,address receiver) internal {
+    for (uint i = 0; i < nfts.length; i++) {
+      (string memory tkn, address addrTkn, uint id, uint chain) = abi.decode(nfts[i],(string,address,uint,uint));
         if (chain==721) {
-          IERC721(tkn).safeTransferFrom(initAddress,acceptAddress,id);
+          IERC721(addrTkn).safeTransferFrom(sender,receiver,id);
         } else {
-          IERC1155(tkn).safeTransferFrom(initAddress,acceptAddress,id,1,"");
+          IERC1155(addrTkn).safeTransferFrom(sender,receiver,id,1,"");
         }
     }
-    for (uint i = 0; i < acceptNfts.length; i++) {
-      (address tkn, uint id, uint chain) = abi.decode(acceptNfts[i],(address,uint,uint));
-        if (chain==721) {
-          IERC721(tkn).safeTransferFrom(acceptAddress,initAddress,id);
-        } else {
-          IERC1155(tkn).safeTransferFrom(acceptAddress,initAddress,id,1,"");
-        }
+  }
+
+  function ParseStr(bytes[] memory nfts) internal pure returns (string memory){
+      string memory tokens="";
+      for (uint i = 0; i < nfts.length; i++) {
+      (string memory tkn, address addrTkn, uint id, uint chain) = abi.decode(nfts[i],(string,address,uint,uint));
+      tokens=string.concat(tokens,"[id: ");
+      tokens=string.concat(tokens,Strings.toString(id));
+      tokens=string.concat(tokens,", type: ");
+      tokens=string.concat(tokens,Strings.toString(chain));
+      tokens=string.concat(tokens,", contract address: ");
+      tokens=string.concat(tokens,tkn);
+      tokens=string.concat(tokens,"]");
+      if(i!=nfts.length-1){
+        tokens=string.concat(tokens,",");
+      }
     }
+    return tokens;
   }
 }
