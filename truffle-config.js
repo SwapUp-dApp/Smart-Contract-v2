@@ -1,3 +1,12 @@
+const dotenv = require('dotenv');
+const HDWalletProvider = require('@truffle/hdwallet-provider');
+
+
+dotenv.config();
+
+const privateKeys = [process.env.PRIVATE_KEY];
+const baseScanApiKey = process.env.BASE_SCAN_API_KEY
+
 /**
  * Use this file to configure your truffle project. It's seeded with some
  * common settings for different networks and features like migrations,
@@ -66,7 +75,7 @@ module.exports = {
     //
     // development: {
     //  host: "127.0.0.1",     // Localhost (default: none)
-    //  port: 8545,            // Standard Ethereum port (default: none)
+    //  port: 7545,            // Standard Ethereum port (default: none)
     //  network_id: "*",       // Any network (default: none)
     // },
     //
@@ -96,6 +105,35 @@ module.exports = {
     //   network_id: 2111,   // This network is yours, in the cloud.
     //   production: true    // Treats this network as if it was a public net. (default: false)
     // }
+    // development: {
+    //   host: '127.0.0.1', // Localhost (default: none)
+    //   port: 8545, // Standard Ethereum port (default: none)
+    //   network_id: '*', // Any network (default: none)
+    // },
+
+   bscTestnet: {
+      provider: () =>
+        new HDWalletProvider(
+          privateKeys,
+          `https://data-seed-prebsc-1-s1.binance.org:8545`
+        ),
+      network_id: 97,
+      networkCheckTimeout: 10000,
+      timeoutBlocks: 200,
+      confirmations: 5,
+      production: true, // Treats this network as if it was a public net. (default: false),
+      skipDryRun: true
+    },
+
+    baseSepoliaTestnet: {
+      provider: () => new HDWalletProvider(privateKeys, `https://sepolia.base.org`),
+      network_id: 84532,
+      timeoutBlocks: 200,
+      networkCheckTimeout: 10000,
+      confirmations: 2,
+      production: true, // Treats this network as if it was a public net. (default: false),
+      skipDryRun: true
+    }
   },
 
   // Set default mocha options here, use special reporters, etc.
@@ -106,36 +144,17 @@ module.exports = {
   // Configure your compilers
   compilers: {
     solc: {
-      version: "0.8.4",      // Fetch exact version from solc-bin (default: truffle's version)
-      // docker: true,        // Use "0.5.1" you've installed locally with docker (default: false)
-      // settings: {          // See the solidity docs for advice about optimization and evmVersion
-      //  optimizer: {
-      //    enabled: false,
-      //    runs: 200
-      //  },
-      //  evmVersion: "byzantium"
-      // }
+      version: "0.8.25",      // Fetch exact version from solc-bin (default: truffle's version)
+      settings: {
+        optimizer: {
+          enabled: true,
+          runs: 200,
+        },
+      }
     }
   },
-
-  // Truffle DB is currently disabled by default; to enable it, change enabled:
-  // false to enabled: true. The default storage location can also be
-  // overridden by specifying the adapter settings, as shown in the commented code below.
-  //
-  // NOTE: It is not possible to migrate your contracts to truffle DB and you should
-  // make a backup of your artifacts to a safe location before enabling this feature.
-  //
-  // After you backed up your artifacts you can utilize db by running migrate as follows:
-  // $ truffle migrate --reset --compile-all
-  //
-  // db: {
-  //   enabled: false,
-  //   host: "127.0.0.1",
-  //   adapter: {
-  //     name: "indexeddb",
-  //     settings: {
-  //       directory: ".db"
-  //     }
-  //   }
-  // }
+  plugins: ['truffle-plugin-verfify'],
+  api_Keys: {
+    basescan: baseScanApiKey,
+  }
 };

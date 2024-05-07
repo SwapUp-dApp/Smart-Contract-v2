@@ -1,0 +1,26 @@
+{
+  "name": "swap-up",
+  "version": "1.0.0",
+  "description": "A sample Truffle project",
+  "main": "truffle-config.js",
+  "author": "SwapUp",
+  "keywords": [
+    "Ethereum",
+    "Truffle",
+    "dapp"
+  ],
+  "scripts": {
+    "migrate:develop": "rm -rf build && truffle migrate --reset --compile-all --network development",
+    "migrate:base-sepolia": "rm -rf build && truffle migrate --reset --compile-all --network baseSepoliaTestnet",
+    "verify:base-sepolia": "truffle run verify SwapUp --network baseSepoliaTestnet"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "ganache": "^7.9.2"
+  },
+  "devDependencies": {
+    "@truffle/hdwallet-provider": "^1.7.0",
+    "dotenv": "^16.4.5",
+    "truffle-plugin-verify": "^0.6.7"
+  }
+}
