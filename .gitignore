@@ -3,4 +3,5 @@ build
 .idea
 .env
 dev
+# this is the folder that is used to generate the contract version for the network verification process
 output-verify-contract
