@@ -12,15 +12,18 @@
   "scripts": {
     "migrate:develop": "rm -rf build && truffle migrate --reset --compile-all --network development",
     "migrate:base-sepolia": "rm -rf build && truffle migrate --reset --compile-all --network baseSepoliaTestnet",
-    "verify:base-sepolia": "truffle run verify SwapUp --network baseSepoliaTestnet"
+    "verify:base-sepolia": "truffle run verify SwapUp --network baseSepoliaTestnet",
+    "generate-swapup-output": "sol-merger ./contracts/SwapUp.sol ./output-verify-contract"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.2",
     "ganache": "^7.9.2"
   },
   "devDependencies": {
+    "@openzeppelin/test-helpers": "^0.5.16",
     "@truffle/hdwallet-provider": "^1.7.0",
     "dotenv": "^16.4.5",
+    "prettier": "^3.2.5",
     "truffle-plugin-verify": "^0.6.7"
   }
 }
