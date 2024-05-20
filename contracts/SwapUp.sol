@@ -8,31 +8,13 @@ import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/utils/introspection/ERC165Checker.sol';
 import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 import '@openzeppelin/contracts/utils/cryptography/EIP712.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
 
-contract SwapUp is EIP712 {
+contract SwapUp is EIP712, Ownable {
     using ERC165Checker for address;
 
     bytes4 private constant INTERFACE_ID_ERC721 = 0x80ac58cd;
     bytes4 private constant INTERFACE_ID_ERC1155 = 0xd9b67a26;
-
-    // Event emitted when a token transfer occurs
-    event TokenTransferred(
-        address indexed assetAddress,
-        address indexed party1Address,
-        address indexed party2Address,
-        uint256 amount
-    );
-    event NFTTransferred(
-        address indexed assetAddress,
-        address indexed party1Address,
-        address indexed party2Address,
-        uint256 tokenId
-    );
-    event SwapCreated(string swapId, address inititator, address responder);
-    event SwapCompleted(string swapId, address inititator, address responder);
-    event LogEvent(string text);
-
-    constructor() EIP712('SwapUp', '1') {}
 
     struct Asset {
         address assetAddress;
@@ -53,6 +35,84 @@ contract SwapUp is EIP712 {
     }
 
     mapping(string => Swap) public swaps;
+
+    address public treasuryWalletAddress;
+    uint256 public platformFeeAmount;
+    address public platformFeeAddress;
+    uint256 public currencyFeeAmount;
+    uint256 public currencyFeeAmountWithSubdomen;
+
+    // Event emitted when a token transfer occurs
+    event TokenTransferred(
+        address indexed assetAddress,
+        address indexed party1Address,
+        address indexed party2Address,
+        uint256 amount
+    );
+    event NFTTransferred(
+        address indexed assetAddress,
+        address indexed party1Address,
+        address indexed party2Address,
+        uint256 tokenId
+    );
+    event SwapCreated(string swapId, address inititator, address responder);
+    event SwapCompleted(string swapId, address inititator, address responder);
+    event CommissionUpdated(string commissionType, uint256 amount);
+    event AddressUpdated(string addressType, address newAddress);
+
+    constructor(
+        address initialOwner,
+        address _treasuryWalletAddress,
+        uint256 _platformFeeAmount,
+        address _platformFeeAddress,
+        uint256 _currencyFeeAmount,
+        uint256 _currencyFeeAmountWithSubdomen
+    ) EIP712('SwapUp', '1') Ownable(initialOwner) {
+        treasuryWalletAddress = _treasuryWalletAddress;
+        platformFeeAmount = _platformFeeAmount;
+        platformFeeAddress = _platformFeeAddress;
+        currencyFeeAmount = _currencyFeeAmount;
+        currencyFeeAmountWithSubdomen = _currencyFeeAmountWithSubdomen;
+    }
+
+    function setTreasuryWalletAddress(
+        address _treasuryWalletAddress
+    ) external onlyOwner {
+        treasuryWalletAddress = _treasuryWalletAddress;
+        emit AddressUpdated('TreasuryWalletAddress', _treasuryWalletAddress);
+    }
+
+    function setPlatformFeeAmount(
+        uint256 _platformFeeAmount
+    ) external onlyOwner {
+        platformFeeAmount = _platformFeeAmount;
+        emit CommissionUpdated('PlatformFeeAmount', _platformFeeAmount);
+    }
+
+    function setPlatformFeeAddress(
+        address _platformFeeAddress
+    ) external onlyOwner {
+        platformFeeAddress = _platformFeeAddress;
+        emit AddressUpdated('PlatformFeeAddress', _platformFeeAddress);
+    }
+
+    function setCurrencyFeeAmount(
+        uint256 _currencyFeeAmount
+    ) external onlyOwner {
+        require(_currencyFeeAmount <= 100, 'Fee must be between 0 and 100');
+        currencyFeeAmount = _currencyFeeAmount;
+        emit CommissionUpdated('CurrencyFeeAmount', _currencyFeeAmount);
+    }
+
+    function setCurrencyFeeAmountWithSubdomen(
+        uint256 _currencyFeeAmountWithSubdomen
+    ) external onlyOwner {
+        currencyFeeAmountWithSubdomen = _currencyFeeAmountWithSubdomen;
+        emit CommissionUpdated(
+            'CurrencyFeeAmountWithSubdomen',
+            _currencyFeeAmountWithSubdomen
+        );
+    }
 
     function approveAndSwap(
         string calldata swapId,
@@ -196,14 +256,31 @@ contract SwapUp is EIP712 {
     ) public {
         require(senderAddress != address(0), 'Invalid sender address');
 
+        require(treasuryWalletAddress != address(0), 'Invalid sender address');
+
         // Check if receiver address is not zero
         require(recipient != address(0), 'Invalid receiver address');
 
         // Check if amount is not zero
         require(amount > 0, 'Invalid amount');
 
+        // Calculate the dynamic fee amount and the recipient amount
+        uint256 treasuryAmount = (amount * currencyFeeAmount) / 100;
+        uint256 recipientAmount = amount - treasuryAmount;
+
         // initiate safe transfer
-        _safeTransferFrom(tokenAddress, senderAddress, recipient, amount);
+        _safeTransferFrom(
+            tokenAddress,
+            senderAddress,
+            treasuryWalletAddress,
+            treasuryAmount
+        );
+        _safeTransferFrom(
+            tokenAddress,
+            senderAddress,
+            recipient,
+            recipientAmount
+        );
     }
 
     function transferNFT(
@@ -217,10 +294,6 @@ contract SwapUp is EIP712 {
 
         if (_isERC721(nftAddress)) {
             IERC721 nft = IERC721(nftAddress);
-            require(
-                nft.getApproved(tokenId) == address(this),
-                'Token not approved for transfer'
-            );
 
             // Transfer the NFT
             nft.safeTransferFrom(senderAddress, recipient, tokenId);
