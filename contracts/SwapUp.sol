@@ -5,16 +5,20 @@ import '@openzeppelin/contracts/token/ERC721/IERC721.sol';
 import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
 import '@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/token/common/ERC2981.sol';
 import '@openzeppelin/contracts/utils/introspection/ERC165Checker.sol';
 import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 import '@openzeppelin/contracts/utils/cryptography/EIP712.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
+import '@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol';
 
 contract SwapUp is EIP712, Ownable {
     using ERC165Checker for address;
 
     bytes4 private constant INTERFACE_ID_ERC721 = 0x80ac58cd;
     bytes4 private constant INTERFACE_ID_ERC1155 = 0xd9b67a26;
+
+    AggregatorV3Interface internal priceFeed;
 
     struct Asset {
         address assetAddress;
@@ -38,7 +42,6 @@ contract SwapUp is EIP712, Ownable {
 
     address public treasuryWalletAddress;
     uint256 public platformFeeAmount;
-    address public platformFeeAddress;
     uint256 public currencyFeeAmount;
     uint256 public currencyFeeAmountWithSubdomen;
 
@@ -55,8 +58,8 @@ contract SwapUp is EIP712, Ownable {
         address indexed party2Address,
         uint256 tokenId
     );
-    event SwapCreated(string swapId, address inititator, address responder);
-    event SwapCompleted(string swapId, address inititator, address responder);
+    event SwapCreated(string swapId, address initiator, address responder);
+    event SwapCompleted(string swapId, address initiator, address responder);
     event CommissionUpdated(string commissionType, uint256 amount);
     event AddressUpdated(string addressType, address newAddress);
 
@@ -64,15 +67,15 @@ contract SwapUp is EIP712, Ownable {
         address initialOwner,
         address _treasuryWalletAddress,
         uint256 _platformFeeAmount,
-        address _platformFeeAddress,
         uint256 _currencyFeeAmount,
-        uint256 _currencyFeeAmountWithSubdomen
+        uint256 _currencyFeeAmountWithSubdomen,
+        address _priceFeedAddress
     ) EIP712('SwapUp', '1') Ownable(initialOwner) {
         treasuryWalletAddress = _treasuryWalletAddress;
         platformFeeAmount = _platformFeeAmount;
-        platformFeeAddress = _platformFeeAddress;
         currencyFeeAmount = _currencyFeeAmount;
         currencyFeeAmountWithSubdomen = _currencyFeeAmountWithSubdomen;
+        priceFeed = AggregatorV3Interface(_priceFeedAddress);
     }
 
     function setTreasuryWalletAddress(
@@ -87,13 +90,6 @@ contract SwapUp is EIP712, Ownable {
     ) external onlyOwner {
         platformFeeAmount = _platformFeeAmount;
         emit CommissionUpdated('PlatformFeeAmount', _platformFeeAmount);
-    }
-
-    function setPlatformFeeAddress(
-        address _platformFeeAddress
-    ) external onlyOwner {
-        platformFeeAddress = _platformFeeAddress;
-        emit AddressUpdated('PlatformFeeAddress', _platformFeeAddress);
     }
 
     function setCurrencyFeeAmount(
@@ -120,17 +116,29 @@ contract SwapUp is EIP712, Ownable {
         Asset[] calldata initiatorAssets,
         Asset[] calldata responderAssets,
         string calldata swapType
-    ) public {
+    ) public payable {
         Swap storage targetSwap = swaps[swapId];
 
-        require(responderAddress != address(0), 'invalid initiator address');
-        require(initiatorAssets.length > 0, 'no initiator assets found');
-        require(responderAssets.length > 0, 'no contragent assets found');
+        require(responderAddress != address(0), 'Invalid responder address');
+        require(initiatorAssets.length > 0, 'No initiator assets found');
+        require(responderAssets.length > 0, 'No responder assets found');
+
+        // Calculate the equivalent ETH amount for $10 using Chainlink price feed
+        uint256 ethAmountForPlatformFee = getFeeInETH();
+
+        // Ensure both parties have provided enough ETH for the platform fee
+        require(
+            msg.value >= ethAmountForPlatformFee,
+            'Insufficient ETH for platform fee'
+        );
+
+        // Transfer platform fee from responder to the contract
+        payable(treasuryWalletAddress).transfer(msg.value);
 
         if (bytes(targetSwap.swapId).length > 0) {
             require(
                 msg.sender == targetSwap.responderAddress,
-                'only responder is allowed to proceed with this swap'
+                'Only responder is allowed to proceed with this swap'
             );
             require(
                 keccak256(bytes(targetSwap.status)) ==
@@ -139,11 +147,11 @@ contract SwapUp is EIP712, Ownable {
             );
             require(
                 initiatorAssets.length == targetSwap.initiatorAssets.length,
-                "Provided assets don't match to the initial swap setup"
+                "Provided assets don't match the initial swap setup"
             );
             require(
                 responderAssets.length == targetSwap.responderAssets.length,
-                "Provided assets don't match to the initial swap setup"
+                "Provided assets don't match the initial swap setup"
             );
 
             _validateAssetsBeforeTransfer(
@@ -238,11 +246,11 @@ contract SwapUp is EIP712, Ownable {
             require(
                 swapPartyAssets[i].assetAddress ==
                     actualPartyAssets[i].assetAddress,
-                'asset address is incorrect'
+                'Asset address is incorrect'
             );
             require(
                 swapPartyAssets[i].value == actualPartyAssets[i].value,
-                'asset value is incorrect'
+                'Asset value is incorrect'
             );
         }
     }
@@ -255,20 +263,16 @@ contract SwapUp is EIP712, Ownable {
         uint256 amount
     ) public {
         require(senderAddress != address(0), 'Invalid sender address');
-
-        require(treasuryWalletAddress != address(0), 'Invalid sender address');
-
-        // Check if receiver address is not zero
+        require(
+            treasuryWalletAddress != address(0),
+            'Invalid treasury wallet address'
+        );
         require(recipient != address(0), 'Invalid receiver address');
-
-        // Check if amount is not zero
         require(amount > 0, 'Invalid amount');
 
-        // Calculate the dynamic fee amount and the recipient amount
         uint256 treasuryAmount = (amount * currencyFeeAmount) / 100;
         uint256 recipientAmount = amount - treasuryAmount;
 
-        // initiate safe transfer
         _safeTransferFrom(
             tokenAddress,
             senderAddress,
@@ -327,12 +331,9 @@ contract SwapUp is EIP712, Ownable {
         uint256 amount
     ) private {
         IERC20 token = IERC20(tokenAddress);
-
-        // Check if the sender has enough balance
         require(token.balanceOf(sender) >= amount, 'Insufficient balance');
 
         token.approve(address(this), amount);
-
         token.transferFrom(sender, recipient, amount);
     }
 
@@ -342,5 +343,11 @@ contract SwapUp is EIP712, Ownable {
 
     function _isERC1155(address token) internal view returns (bool) {
         return token.supportsInterface(INTERFACE_ID_ERC1155);
+    }
+
+    function getFeeInETH() public view returns (uint256) {
+        (, int price, , , ) = priceFeed.latestRoundData();
+        uint256 ethPriceInUsd = uint256(price) * 10 ** 10; // Adjusting price to 18 decimals
+        return (platformFeeAmount * 10 ** 18) / ethPriceInUsd;
     }
 }

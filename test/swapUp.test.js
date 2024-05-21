@@ -1,17 +1,21 @@
+
 const SwapUp = artifacts.require('SwapUp');
 const MockERC20 = artifacts.require('MockERC20'); // Ensure you have a MockERC20 contract.
 const TestNFT = artifacts.require('TestNFT');
-
+const MockChainLink = artifacts.require('MockChainLinkFeed');
 
 contract("test block", (accounts) => {
     let contract;
     let token;
     let nft;
-    const sender = accounts[1]; // Using a different account as sender
+    const sender = accounts[1];
     const recipient = accounts[2];
     const tokenAmount = '10000000000000000000';
 
+    const treasuryWallet = web3.eth.accounts.create().address;
+
     before(async () => {
+        chainLinkContract = await MockChainLink.deployed();
         contract = await SwapUp.deployed();
         token = await MockERC20.deployed();
         nft = await TestNFT.deployed();
@@ -35,6 +39,7 @@ contract("test block", (accounts) => {
 
         await nft.setApprovalForAll(contract.address, true);
 
+        await contract.setTreasuryWalletAddress(treasuryWallet);
     });
 
     it("Swap up contract deployment", async () => {
@@ -68,29 +73,52 @@ contract("test block", (accounts) => {
 
     // SWAP Sender's 1st NFT into RECPIENT 1st NFT (0 -> 4 | 4 -> 0)
     it("Swap single NFT between user A and user B", async () => {
-        await nft.approve(contract.address, 0, { from: sender });
-        await nft.approve(contract.address, 4, { from: recipient });
+    await nft.approve(contract.address, 0, { from: sender });
+    await nft.approve(contract.address, 4, { from: recipient });
 
-        const ownerOf1NFT = await nft.ownerOf(0);
-        const ownerOf5NFT = await nft.ownerOf(4);
+    // const initialTreasuryEthBalance = await web3.eth.getBalance(treasuryWallet);
+    // console.log('Initial treasury balance:', web3.utils.fromWei(initialTreasuryEthBalance, 'ether'));
 
-        assert.equal(ownerOf1NFT, sender, 'invalid owner of 1st NFT');
-        assert.equal(ownerOf5NFT, recipient, 'invalid owner of 2nd NFT');
+    const ownerOf1NFT = await nft.ownerOf(0);
+    const ownerOf5NFT = await nft.ownerOf(4);
 
-        const tx = await contract.approveAndSwap('testID-1', recipient, [{ assetAddress: nft.address, value: 0 }], [{ assetAddress: nft.address, value: 4}], 'PRIVATE', { from: sender });
+    assert.equal(ownerOf1NFT, sender, 'Invalid owner of 1st NFT');
+    assert.equal(ownerOf5NFT, recipient, 'Invalid owner of 2nd NFT');
 
-        assert.equal(tx.receipt.status, true, 'status of transaction is false');
+    const feeInETH = await contract.getFeeInETH();
+    const feeInWei = web3.utils.toWei(feeInETH.toString(), 'ether');
 
-        const swapTx = await contract.approveAndSwap('testID-1', recipient, [{ assetAddress: nft.address, value: 0 }], [{ assetAddress: nft.address, value: 4}], 'PRIVATE', { from: recipient });
+    const tx = await contract.approveAndSwap(
+        'testID-1',
+        recipient,
+        [{ assetAddress: nft.address, value: 0 }],
+        [{ assetAddress: nft.address, value: 4 }],
+        'PRIVATE',
+        { from: sender, value: feeInWei }
+    );
 
-        assert.equal(swapTx.receipt.status, true, 'status of swap tx is false');
+    assert.equal(tx.receipt.status, true, 'Status of transaction is false');
 
-        const ownerOf1NFTUpd = await nft.ownerOf(0);
-        const ownerOf5NFTUpd = await nft.ownerOf(4);
+    const swapTx = await contract.approveAndSwap(
+        'testID-1',
+        recipient,
+        [{ assetAddress: nft.address, value: 0 }],
+        [{ assetAddress: nft.address, value: 4 }],
+        'PRIVATE',
+        { from: recipient, value: feeInWei }
+    );
 
-        assert.equal(ownerOf1NFTUpd, recipient, 'invalid owner of 1st NFT after transfer');
-        assert.equal(ownerOf5NFTUpd, sender, 'invalid owner of 2nd NFT after transfer');
-    });
+    assert.equal(swapTx.receipt.status, true, 'Status of swap tx is false');
+
+    // const resultTreasuryEthBalance = await web3.eth.getBalance(treasuryWallet);
+    // console.log('Resulting treasury balance:', web3.utils.fromWei(resultTreasuryEthBalance, 'ether'));
+
+    const ownerOf1NFTUpd = await nft.ownerOf(0);
+    const ownerOf5NFTUpd = await nft.ownerOf(4);
+
+    assert.equal(ownerOf1NFTUpd, recipient, 'Invalid owner of 1st NFT after transfer');
+    assert.equal(ownerOf5NFTUpd, sender, 'Invalid owner of 2nd NFT after transfer');
+});
 
     it("Swap multiple NFTs between user A and user B", async () => {
         await nft.setApprovalForAll(contract.address, true, { from: sender });
@@ -127,6 +155,9 @@ contract("test block", (accounts) => {
     it("Swap single NFT from user A to user B | and crypto currency from user B to user A", async () => {
         await nft.setApprovalForAll(contract.address, true, { from: recipient });
 
+        const treasuryWalletTokenBalance = await token.balanceOf(treasuryWallet);
+        console.log(treasuryWalletTokenBalance.toString());
+
         const ownerOf1NFT = await nft.ownerOf(0);
 
         await token.mint(sender, '1000000000000000000000');
@@ -148,7 +179,7 @@ contract("test block", (accounts) => {
 
         const recipientBalance = await token.balanceOf(recipient);
         const senderBalance = await token.balanceOf(sender);
-        const treasuryWalletBalance = await token.balanceOf(accounts[5]);
+        const treasuryWalletBalance = await token.balanceOf(treasuryWallet);
 
         assert.equal(recipientBalance, '19800000000000000000', 'recipient balance after swap is incorrect')
         assert.equal(senderBalance, '990000000000000000000', 'sender balance after swap is incorrect')
@@ -156,13 +187,15 @@ contract("test block", (accounts) => {
 
         const ownerOf1NFTUpd = await nft.ownerOf(0);
 
+        const treasuryWalletTokenBalanceUpd = await token.balanceOf(treasuryWallet);
+        console.log(treasuryWalletTokenBalanceUpd.toString());
+
         assert.equal(ownerOf1NFTUpd, sender, 'invalid owner of 1st NFT after transfer');
     });
 
     it("Swap 10 NFT from user A to user B | and crypto currency from user B to user A", async () => {
         const userA = accounts[3];
         const userB = accounts[4];
-        const treasuryWallet = accounts[5];
 
         // mint 20 NFTS per user A with IDS: 8-27 including
         await nft.mintTo(userA);
@@ -204,7 +237,6 @@ contract("test block", (accounts) => {
         assert.equal(balance.toString(), '1000000000000000000000', 'Incorrect balance value after minting token for sender adress');
 
         const nftAssets = [8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27].map(n => ({ assetAddress: nft.address, value: n }));
-        // const nftAssetsB = [28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,].map(n => ({ assetAddress: nft.address, value: n }));
         const currencyAssets = [1,2,3,4,5].map(() => ({ assetAddress: token.address, value: '1000000000000000000' }));
 
         const userABalance0 = await token.balanceOf(userA);

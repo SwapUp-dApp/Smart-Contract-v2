@@ -16,6 +16,7 @@
     "generate-swapup-output": "sol-merger ./contracts/SwapUp.sol ./output-verify-contract"
   },
   "dependencies": {
+    "@chainlink/contracts": "^1.1.0",
     "@openzeppelin/contracts": "^5.0.2",
     "ganache": "^7.9.2"
   },
