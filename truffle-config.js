@@ -133,6 +133,26 @@ module.exports = {
       confirmations: 2,
       production: true, // Treats this network as if it was a public net. (default: false),
       skipDryRun: true
+    },
+
+    sepoliaTestnet: {
+      provider: () => new HDWalletProvider(privateKeys, `https://rpc.ankr.com/eth_sepolia`),
+      network_id: 11155111,
+      timeoutBlocks: 200,
+      networkCheckTimeout: 10000,
+      confirmations: 2,
+      production: true, // Treats this network as if it was a public net. (default: false),
+      skipDryRun: true
+    },
+
+    polygonAmoyTestnet: {
+      provider: () => new HDWalletProvider(privateKeys, `https://rpc.ankr.com/polygon_amoy`),
+      network_id: 80002,
+      timeoutBlocks: 200,
+      networkCheckTimeout: 10000,
+      confirmations: 2,
+      production: true, // Treats this network as if it was a public net. (default: false),
+      skipDryRun: true
     }
   },
 

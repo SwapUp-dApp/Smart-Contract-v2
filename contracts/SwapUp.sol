@@ -153,6 +153,11 @@ contract SwapUp is EIP712, Ownable {
                 responderAssets.length == targetSwap.responderAssets.length,
                 "Provided assets don't match the initial swap setup"
             );
+            require(
+                keccak256(bytes(targetSwap.swapType)) ==
+                    keccak256(bytes(swapType)),
+                'Incorrect swapType provided'
+            );
 
             _validateAssetsBeforeTransfer(
                 targetSwap.initiatorAssets,
@@ -194,7 +199,7 @@ contract SwapUp is EIP712, Ownable {
             require(
                 keccak256(bytes(swapType)) == keccak256(bytes('OPEN')) ||
                     keccak256(bytes(swapType)) == keccak256(bytes('PRIVATE')),
-                'Incorrect swapType provided'
+                'Provided swap type is invalid'
             );
 
             targetSwap.swapId = swapId;
@@ -347,7 +352,11 @@ contract SwapUp is EIP712, Ownable {
 
     function getFeeInETH() public view returns (uint256) {
         (, int price, , , ) = priceFeed.latestRoundData();
-        uint256 ethPriceInUsd = uint256(price) * 10 ** 10; // Adjusting price to 18 decimals
-        return (platformFeeAmount * 10 ** 18) / ethPriceInUsd;
+        require(price > 0, 'Price feed returned invalid value');
+
+        uint256 ethPriceInUsd = uint256(price); // Price feed is already in 8 decimals
+        uint256 amountInUsd = platformFeeAmount * 10 ** 8; // Convert USD to same decimals as price feed
+
+        return (amountInUsd * 10 ** 18) / ethPriceInUsd;
     }
 }
