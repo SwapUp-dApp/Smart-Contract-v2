@@ -380,7 +380,7 @@ contract SwapUp is EIP712, Ownable {
 
         openSwap.proposalIds.push(proposalId);
 
-        payable(treasuryWalletAddress).transfer(msg.value);
+        // payable(treasuryWalletAddress).transfer(msg.value);
 
         emit ProposalCreated(proposalId, openSwapId, msg.sender);
     }
@@ -444,7 +444,7 @@ contract SwapUp is EIP712, Ownable {
             }
 
             // Transfer the platform fee to the treasury wallet
-            payable(treasuryWalletAddress).transfer(openSwap.platformFee);
+            // payable(treasuryWalletAddress).transfer(openSwap.platformFee);
 
             emit SwapCompleted(
                 tradeId,
@@ -574,15 +574,16 @@ contract SwapUp is EIP712, Ownable {
         require(recipient != address(0), 'Invalid receiver address');
         require(amount > 0, 'Invalid amount');
 
-        uint256 treasuryAmount = (amount * currencyFeeAmount) / 100;
+        // uint256 treasuryAmount = (amount * currencyFeeAmount) / 100;
+        uint256 treasuryAmount = 0;
         uint256 recipientAmount = amount - treasuryAmount;
 
-        _safeTransferFrom(
-            tokenAddress,
-            senderAddress,
-            treasuryWalletAddress,
-            treasuryAmount
-        );
+        // _safeTransferFrom(
+        //     tokenAddress,
+        //     senderAddress,
+        //     treasuryWalletAddress,
+        //     treasuryAmount
+        // );
         _safeTransferFrom(
             tokenAddress,
             senderAddress,
