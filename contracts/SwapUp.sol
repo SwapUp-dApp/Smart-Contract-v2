@@ -22,6 +22,13 @@ contract SwapUp is EIP712, Ownable {
     struct Asset {
         address assetAddress;
         uint256 value;
+        AssetType assetType;
+    }
+
+    enum AssetType {
+        ERC20,
+        ERC721,
+        ERC1155
     }
 
     struct Swap {
@@ -160,7 +167,8 @@ contract SwapUp is EIP712, Ownable {
                 existingSwap.initiatorAssets.push(
                     Asset({
                         assetAddress: initiatorAssets[i].assetAddress,
-                        value: initiatorAssets[i].value
+                        value: initiatorAssets[i].value,
+                        assetType: initiatorAssets[i].assetType
                     })
                 );
             }
@@ -168,7 +176,8 @@ contract SwapUp is EIP712, Ownable {
                 existingSwap.responderAssets.push(
                     Asset({
                         assetAddress: responderAssets[i].assetAddress,
-                        value: responderAssets[i].value
+                        value: responderAssets[i].value,
+                        assetType: responderAssets[i].assetType
                     })
                 );
             }
@@ -212,7 +221,8 @@ contract SwapUp is EIP712, Ownable {
                 existingProposal.initiatorAssets.push(
                     Asset({
                         assetAddress: initiatorAssets[i].assetAddress,
-                        value: initiatorAssets[i].value
+                        value: initiatorAssets[i].value,
+                        assetType: initiatorAssets[i].assetType
                     })
                 );
             }
@@ -220,7 +230,8 @@ contract SwapUp is EIP712, Ownable {
                 existingProposal.responderAssets.push(
                     Asset({
                         assetAddress: responderAssets[i].assetAddress,
-                        value: responderAssets[i].value
+                        value: responderAssets[i].value,
+                        assetType: responderAssets[i].assetType
                     })
                 );
             }
@@ -278,6 +289,28 @@ contract SwapUp is EIP712, Ownable {
             );
         }
 
+        // Validate asset types for ERC-20 to ERC-721 swap
+        if (swapType.equal('PRIVATE')) {
+            require(
+                (initiatorAssets.length == 1 &&
+                    initiatorAssets[0].assetType == AssetType.ERC20 &&
+                    responderAssets.length == 1 &&
+                    responderAssets[0].assetType == AssetType.ERC721) ||
+                    (initiatorAssets.length == 1 &&
+                        initiatorAssets[0].assetType == AssetType.ERC721 &&
+                        responderAssets.length == 1 &&
+                        responderAssets[0].assetType == AssetType.ERC20),
+                'Invalid asset types for ERC-20 to ERC-721 swap or vice versa'
+            );
+        } else if (swapType.equal('OPEN')) {
+            require(
+                initiatorAssets.length == 1 &&
+                    (initiatorAssets[0].assetType == AssetType.ERC20 ||
+                        initiatorAssets[0].assetType == AssetType.ERC721),
+                'Invalid asset type for open swap'
+            );
+        }
+
         // Calculate the equivalent ETH amount of the platform fee using Chainlink price feed
         uint256 ethAmountForPlatformFee = getFeeInETH();
 
@@ -301,7 +334,8 @@ contract SwapUp is EIP712, Ownable {
             newSwap.initiatorAssets.push(
                 Asset({
                     assetAddress: initiatorAssets[i].assetAddress,
-                    value: initiatorAssets[i].value
+                    value: initiatorAssets[i].value,
+                    assetType: initiatorAssets[i].assetType
                 })
             );
         }
@@ -311,7 +345,8 @@ contract SwapUp is EIP712, Ownable {
                 newSwap.responderAssets.push(
                     Asset({
                         assetAddress: responderAssets[i].assetAddress,
-                        value: responderAssets[i].value
+                        value: responderAssets[i].value,
+                        assetType: responderAssets[i].assetType
                     })
                 );
             }
@@ -332,6 +367,24 @@ contract SwapUp is EIP712, Ownable {
         Asset[] memory proposerAssets
     ) public payable {
         Swap storage openSwap = swaps[openSwapId];
+
+        require(
+            openSwap.initiatorAssets.length == 1,
+            'Invalid open swap asset count'
+        );
+        require(proposerAssets.length == 1, 'Invalid proposer asset count');
+
+        AssetType openSwapAssetType = openSwap.initiatorAssets[0].assetType;
+        AssetType proposerAssetType = proposerAssets[0].assetType;
+
+        require(
+            (openSwapAssetType == AssetType.ERC20 &&
+                proposerAssetType == AssetType.ERC721) ||
+                (openSwapAssetType == AssetType.ERC721 &&
+                    proposerAssetType == AssetType.ERC20),
+            'Invalid asset types for ERC-20 to ERC-721 swap or vice versa'
+        );
+
         require(bytes(openSwap.swapId).length > 0, 'Open swap does not exist');
         require(
             openSwap.swapType.equal('OPEN'),
@@ -365,7 +418,8 @@ contract SwapUp is EIP712, Ownable {
             newProposal.initiatorAssets.push(
                 Asset({
                     assetAddress: proposerAssets[i].assetAddress,
-                    value: proposerAssets[i].value
+                    value: proposerAssets[i].value,
+                    assetType: proposerAssets[i].assetType
                 })
             );
         }
@@ -373,7 +427,8 @@ contract SwapUp is EIP712, Ownable {
             newProposal.responderAssets.push(
                 Asset({
                     assetAddress: openSwap.initiatorAssets[i].assetAddress,
-                    value: openSwap.initiatorAssets[i].value
+                    value: openSwap.initiatorAssets[i].value,
+                    assetType: openSwap.initiatorAssets[i].assetType
                 })
             );
         }
@@ -413,16 +468,14 @@ contract SwapUp is EIP712, Ownable {
                     _transferAssets(
                         acceptedProposal.initiatorAddress,
                         openSwap.initiatorAddress,
-                        acceptedProposal.initiatorAssets[i].assetAddress,
-                        acceptedProposal.initiatorAssets[i].value
+                        acceptedProposal.initiatorAssets[i]
                     );
                 }
                 for (uint256 i = 0; i < openSwap.initiatorAssets.length; i++) {
                     _transferAssets(
                         openSwap.initiatorAddress,
                         acceptedProposal.initiatorAddress,
-                        openSwap.initiatorAssets[i].assetAddress,
-                        openSwap.initiatorAssets[i].value
+                        openSwap.initiatorAssets[i]
                     );
                 }
             }
@@ -486,8 +539,7 @@ contract SwapUp is EIP712, Ownable {
                 _transferAssets(
                     existingSwap.initiatorAddress,
                     existingSwap.responderAddress,
-                    existingSwap.initiatorAssets[i].assetAddress,
-                    existingSwap.initiatorAssets[i].value
+                    existingSwap.initiatorAssets[i]
                 );
             }
 
@@ -495,8 +547,7 @@ contract SwapUp is EIP712, Ownable {
                 _transferAssets(
                     existingSwap.responderAddress,
                     existingSwap.initiatorAddress,
-                    existingSwap.responderAssets[i].assetAddress,
-                    existingSwap.responderAssets[i].value
+                    existingSwap.responderAssets[i]
                 );
             }
 
@@ -616,13 +667,14 @@ contract SwapUp is EIP712, Ownable {
     function _transferAssets(
         address party1,
         address party2,
-        address assetAddress,
-        uint256 assetValue
+        Asset memory asset
     ) internal {
-        if (_isERC721(assetAddress) || _isERC1155(assetAddress)) {
-            transferNFT(party1, party2, assetAddress, assetValue);
+        if (asset.assetType == AssetType.ERC721) {
+            transferNFT(party1, party2, asset.assetAddress, asset.value);
+        } else if (asset.assetType == AssetType.ERC20) {
+            transferTokens(party1, party2, asset.assetAddress, asset.value);
         } else {
-            transferTokens(party1, party2, assetAddress, assetValue);
+            revert('Unsupported asset type');
         }
     }
 
